@@ -1,0 +1,10 @@
+server/.env
+.env
+
+server/chroma_db_user_1/
+server/instance/
+*.db
+
+__pycache__/
+*.pyc
+venv/

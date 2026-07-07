@@ -1,0 +1,36 @@
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from app.core.database import engine, Base
+from app.routers import auth, chat
+import os
+# from app.routers import pdf
+app = FastAPI(title="NeuroSight API", version="1.0.0")
+
+# CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],  # Next.js dev
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Static files (uploaded images)
+os.makedirs("static/uploads", exist_ok=True)
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# Create database tables
+Base.metadata.create_all(bind=engine)
+
+# Include routers
+app.include_router(auth.router)
+# app.include_router(upload.router)
+app.include_router(chat.router)
+# app.include_router(reports.router)
+# app.include_router(admin.router)
+# app.include_router(pdf.router)
+
+@app.get("/")
+def root():
+    return {"message": "NeuroSight API is running"}
