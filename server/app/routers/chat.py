@@ -8,7 +8,7 @@ import re
 from app.models.user import User
 from app.models.chat_message import ChatMessage
 from app.schemas.chat import ChatRequest, ChatMessageResponse
-from app.services.pdf_ingestion import get_vectorstore, get_embeddings, delete_user_vectorstore
+from app.services.pdf_ingestion import get_vectorstore, get_embeddings, delete_user_vectorstore, try_close_client
 from langchain_community.vectorstores import Chroma
 from langchain_classic.chains import RetrievalQA
 import traceback
@@ -31,6 +31,12 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 
 # ─── Cache for retrieval chains ──────────────────────────────
 _retrieval_chains = {}
+# Tracks the underlying Chroma vectorstore behind each cached chain, so we
+# can explicitly close its client on delete/invalidate (this is a SEPARATE
+# Chroma client from the one in pdf_ingestion._vectorstores — if we don't
+# close it too, Windows keeps a lock on chroma.sqlite3 and deletion fails).
+_retrieval_vectorstores = {}
+
 
 def get_retrieval_chain(user_id: int):
     """
@@ -44,30 +50,33 @@ def get_retrieval_chain(user_id: int):
     if not os.path.exists(persist_dir):
         return None
 
-    # Check if the vector store has any documents
     embeddings = get_embeddings()
     vectorstore = Chroma(
         persist_directory=persist_dir,
         embedding_function=embeddings,
         collection_name=f"user_{user_id}_docs",
     )
-    
-    # Quick check: try a similarity search with a dummy query
+
+    # Quick check: try a similarity search with a dummy query.
+    # IMPORTANT: if we bail out early on any of these paths, we must close
+    # this client — otherwise it's an orphaned open handle on chroma.sqlite3.
     try:
         test_results = vectorstore.similarity_search("test", k=1)
         if not test_results:
+            try_close_client(vectorstore)
             return None
     except Exception:
+        try_close_client(vectorstore)
         return None
 
     retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
 
     if not settings.GEMINI_API_KEY:
+        try_close_client(vectorstore)
         return None
 
-    # ✅ Updated model name
     llm = ChatGoogleGenerativeAI(
-        model="gemini-2.5-flash",          # ← stable model
+        model="gemini-2.5-flash",
         temperature=0.2,
         google_api_key=settings.GEMINI_API_KEY,
     )
@@ -80,22 +89,39 @@ def get_retrieval_chain(user_id: int):
         verbose=True,
     )
     _retrieval_chains[user_id] = chain
+    _retrieval_vectorstores[user_id] = vectorstore  # keep a reference so we can close it later
     return chain
+
+
+def invalidate_retrieval_chain(user_id: int):
+    """
+    Drop the cached chain AND explicitly close its underlying Chroma client.
+    Call this before deleting a user's vector store, or whenever the store
+    changes (new upload), so no stale file handle survives.
+    """
+    _retrieval_chains.pop(user_id, None)
+    vs = _retrieval_vectorstores.pop(user_id, None)
+    if vs is not None:
+        try:
+            try_close_client(vs)
+        except Exception as e:
+            print(f"⚠️ Error while closing retrieval-chain vectorstore: {e}")
+        del vs
+    gc.collect()
 
 
 def call_gemini(question: str) -> str:
     """Call Gemini directly (without RAG)."""
     if not settings.GEMINI_API_KEY:
         raise Exception("Gemini API key not configured")
-    
-    # ✅ Updated model name
-    model = genai.GenerativeModel("gemini-2.5-flash")   # ← stable model
+
+    model = genai.GenerativeModel("gemini-2.5-flash")
     prompt = f"You are a helpful assistant for Alzheimer's diagnosis. Answer this question concisely and professionally: {question}"
     response = model.generate_content(prompt)
-    
+
     if not response or not response.text:
         raise Exception("Empty response from Gemini")
-    
+
     return response.text
 
 
@@ -111,66 +137,53 @@ async def chat(
     Send a question to the AI assistant.
     Optionally upload a PDF file to be used as context for the answer.
     """
-    # ─── Handle file upload if provided ──────────────────────
     if file:
-        # Validate file type
         if not file.filename.endswith('.pdf'):
             raise HTTPException(status_code=400, detail="Only PDF files are allowed")
-        
-        # Save file temporarily
+
         temp_dir = f"temp_uploads_{user.id}"
         os.makedirs(temp_dir, exist_ok=True)
         file_path = os.path.join(temp_dir, file.filename)
-        
+
         try:
             with open(file_path, "wb") as buffer:
                 shutil.copyfileobj(file.file, buffer)
-            
-            # Ingest the file
+
             from app.services.pdf_ingestion import ingest_pdf
             result = ingest_pdf(file_path, user.id)
-            
-            # Clean up temp file
+
             os.remove(file_path)
-            
-            # Clear cached chain since vector store changed
-            if user.id in _retrieval_chains:
-                del _retrieval_chains[user.id]
-                
+
+            # Vector store changed — invalidate + properly close the cached chain
+            invalidate_retrieval_chain(user.id)
+
         except Exception as e:
-            # Clean up on error
             if os.path.exists(file_path):
                 os.remove(file_path)
             raise HTTPException(status_code=500, detail=f"File ingestion failed: {str(e)}")
 
-    # ─── Get the retrieval chain ──────────────────────────────
     chain = get_retrieval_chain(user.id)
 
-    # ─── Generate answer ──────────────────────────────────────
     if chain is None:
-        # No PDF uploaded – use simple Gemini (no RAG)
         try:
             answer = call_gemini(question)
         except Exception as e:
             traceback.print_exc()
             raise HTTPException(status_code=500, detail=f"Gemini error: {str(e)}")
     else:
-        # Use RAG with the vector store
         try:
             result = chain.invoke({"query": question})
             answer = result["result"]
-            
-            # Append sources if available
+
             sources = [doc.metadata.get("source", "unknown") for doc in result.get("source_documents", [])]
             if sources:
                 unique_sources = list(set(sources))
                 answer += f"\n\n📚 Sources: {', '.join(unique_sources)}"
-                
+
         except Exception as e:
             traceback.print_exc()
             raise HTTPException(status_code=500, detail=f"RAG error: {str(e)}")
 
-    # ─── Save conversation to DB ──────────────────────────────
     chat_msg = ChatMessage(
         user_id=user.id,
         question=question,
@@ -194,9 +207,6 @@ async def get_chat_history(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """
-    Retrieve all chat messages for the current user, newest first.
-    """
     messages = (
         db.query(ChatMessage)
         .filter(ChatMessage.user_id == user.id)
@@ -226,12 +236,8 @@ async def delete_chat_history(
 async def get_uploaded_documents(
     user: User = Depends(get_current_user),
 ):
-    """
-    Get a list of all uploaded PDF documents for the current user.
-    """
     from app.services.pdf_ingestion import get_user_documents_info
     return get_user_documents_info(user.id)
-
 
 
 # ─── DELETE /chat/documents ─────────────────────────────────────
@@ -242,12 +248,16 @@ async def delete_documents(
     """
     Delete all uploaded PDF documents (vector store) for the current user.
     """
-    from app.services.pdf_ingestion import delete_user_vectorstore
-
     print(f"🗑️  Deleting documents for user_id: {user.id}")
     expected_folder = f"chroma_db_user_{user.id}"
     print(f"📂 Expected folder: {expected_folder}")
     print(f"📁 Exists? {os.path.exists(expected_folder)}")
+
+    # 🔑 Close AND clear the retrieval-chain's own Chroma client first —
+    # this is the second, independent client that was leaving a lock on
+    # chroma.sqlite3 even after pdf_ingestion's client was closed.
+    invalidate_retrieval_chain(user.id)
+    print(f"🧹 Cleared + closed cached retrieval chain for user_id: {user.id}")
 
     try:
         if os.path.exists(expected_folder):
@@ -256,8 +266,7 @@ async def delete_documents(
                 print("✅ Deletion successful.")
                 return
             else:
-                # Should not happen, but just in case
-                raise HTTPException(status_code=500, detail="Deletion function returned False.")
+                raise HTTPException(status_code=404, detail="No documents found for this user.")
         else:
             raise HTTPException(status_code=404, detail="No documents found for this user.")
     except RuntimeError as e:

@@ -1,46 +1,28 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import React from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import Image from "next/image";
 import {
   FileText,
-  Calendar,
-  Activity,
-  BarChart3,
   ArrowLeft,
   LogOut,
-  Search,
-  Download,
-  ChevronDown,
-  ChevronUp,
   Loader2,
+  Download,
+  Calendar,
   FileImage,
-  AlertCircle,
   CheckCircle,
-  Clock,
-  File,
 } from "lucide-react";
-import api from "../../lib/api"; // ✅ Import API client
+import api from "../../lib/api";
 
-// ── Types ─────────────────────────────────────────────────────
-interface Prediction {
+interface Report {
   id: number;
-  image_path: string;
-  result: string;
-  confidence: number;
-  timestamp: string;
+  title: string;
+  summary: string;
+  file_path: string;
+  created_at: string;
 }
 
-interface User {
-  id: number;
-  username: string;
-  role: string;
-}
-
-// ── Helper functions ─────────────────────────────────────────
 const formatDate = (dateStr: string) => {
   const d = new Date(dateStr);
   return d.toLocaleDateString("en-IN", {
@@ -52,123 +34,50 @@ const formatDate = (dateStr: string) => {
   });
 };
 
-const daysAgo = (days: number) => {
-  const d = new Date();
-  d.setDate(d.getDate() - days);
-  return d.toISOString();
-};
-
-const getStageBadge = (result: string) => {
-  const map: Record<string, { bg: string; text: string }> = {
-    NonDemented: { bg: "bg-[#D1FAE5]", text: "text-[#065F46]" },
-    VeryMild: { bg: "bg-[#DBEAFE]", text: "text-[#1E40AF]" },
-    Mild: { bg: "bg-[#FEF3C7]", text: "text-[#92400E]" },
-    Moderate: { bg: "bg-[#FEE2E2]", text: "text-[#991B1B]" },
-  };
-  return map[result] || { bg: "bg-[#F1F5F9]", text: "text-[#64748B]" };
-};
-
-// ── Main Component ──────────────────────────────────────────
-export default function ReportsPage() {
+export default function ReportsListPage() {
   const router = useRouter();
-  const [predictions, setPredictions] = useState<Prediction[]>([ /* ... your mock data ... */ ]);
-  const [filtered, setFiltered] = useState<Prediction[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [user, setUser] = useState<User | null>(null);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [sortField, setSortField] = useState<"timestamp" | "result" | "confidence">("timestamp");
-  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
-  const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
-  const [generatingReport, setGeneratingReport] = useState(false); // ✅ New state
+  const [reports, setReports] = useState<Report[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [downloading, setDownloading] = useState<number | null>(null);
 
-  // ── Fetch data ─────────────────────────────────────────────
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchReports = async () => {
       try {
-        const [userRes, predRes] = await Promise.all([
-          api.get("/auth/me"),
-          api.get("/reports/predictions"),
-        ]);
-        setUser(userRes.data);
-        setPredictions(predRes.data);
-        setFiltered(predRes.data);
+        const res = await api.get("/reports/list");
+        setReports(res.data);
       } catch (error) {
-        // If API fails, use mock data (already set)
-        console.warn("Using mock data due to API error");
+        console.error("Failed to fetch reports:", error);
       } finally {
         setLoading(false);
       }
     };
-    fetchData();
-  }, [router]);
+    fetchReports();
+  }, []);
 
-  // ── Search & filter ────────────────────────────────────────
-  useEffect(() => {
-    const term = searchTerm.toLowerCase();
-    let filteredList = predictions.filter(
-      (p) =>
-        p.result.toLowerCase().includes(term) ||
-        formatDate(p.timestamp).toLowerCase().includes(term) ||
-        (p.confidence * 100).toFixed(1).includes(term)
-    );
-    filteredList.sort((a, b) => {
-      let aVal: any = a[sortField];
-      let bVal: any = b[sortField];
-      if (sortField === "timestamp") {
-        aVal = new Date(aVal).getTime();
-        bVal = new Date(bVal).getTime();
-      }
-      if (sortDirection === "asc") return aVal > bVal ? 1 : -1;
-      else return aVal < bVal ? 1 : -1;
-    });
-    setFiltered(filteredList);
-  }, [searchTerm, sortField, sortDirection, predictions]);
-
-  // ── Toggle sort ────────────────────────────────────────────
-  const handleSort = (field: typeof sortField) => {
-    if (sortField === field) {
-      setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
-    } else {
-      setSortField(field);
-      setSortDirection("desc");
-    }
-  };
-
-  // ── Toggle row expansion ──────────────────────────────────
-  const toggleRow = (id: number) => {
-    setExpandedRows((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(id)) newSet.delete(id);
-      else newSet.add(id);
-      return newSet;
-    });
-  };
-
-  // ── Generate PDF Report ────────────────────────────────────
-  const generateReport = async () => {
-    if (predictions.length === 0) {
-      alert("No predictions to generate a report from.");
-      return;
-    }
-    setGeneratingReport(true);
+  // ── Download handler ──────────────────────────────────────────
+  const handleDownload = async (reportId: number) => {
+    setDownloading(reportId);
     try {
-      const ids = predictions.map(p => p.id).join(",");
-      const response = await api.post("/reports/generate", {
-        prediction_ids: ids,
-        title: `Report – ${new Date().toLocaleDateString()}`,
+      const response = await api.get(`/reports/download/${reportId}`, {
+        responseType: "blob",
       });
-      const { report_id } = response.data;
-      // Open the download endpoint in a new tab
-      window.open(`/api/reports/download/${report_id}`, "_blank");
+      const blob = new Blob([response.data], { type: "application/pdf" });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", `report_${reportId}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
     } catch (error) {
-      console.error("Failed to generate report:", error);
-      alert("Failed to generate report. Please try again.");
+      console.error("Download failed:", error);
+      alert("Failed to download report. Please try again.");
     } finally {
-      setGeneratingReport(false);
+      setDownloading(null);
     }
   };
 
-  // ── Logout ──────────────────────────────────────────────────
   const handleLogout = async () => {
     try {
       await api.get("/auth/logout");
@@ -178,7 +87,6 @@ export default function ReportsPage() {
     router.push("/login");
   };
 
-  // ── Loading ─────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="min-h-screen bg-[#F8FAFB] flex items-center justify-center">
@@ -187,7 +95,6 @@ export default function ReportsPage() {
     );
   }
 
-  // ── Render ──────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-[#F8FAFB] font-['Inter',-apple-system,sans-serif]">
       {/* ── Navbar ── */}
@@ -213,245 +120,78 @@ export default function ReportsPage() {
             </span>
           </div>
         </div>
-
-        <div className="flex items-center gap-4">
-          <span className="text-sm text-[#64748B] hidden sm:inline">
-            {user?.username || "User"}
-          </span>
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-1.5 text-sm text-[#64748B] hover:text-[#0D1B2A] transition"
-          >
-            <LogOut size={16} />
-            <span className="hidden sm:inline">Logout</span>
-          </button>
-        </div>
+        <button
+          onClick={handleLogout}
+          className="flex items-center gap-1.5 text-sm text-[#64748B] hover:text-[#0D1B2A] transition"
+        >
+          <LogOut size={16} />
+          <span className="hidden sm:inline">Logout</span>
+        </button>
       </nav>
 
-      {/* ── Main content ── */}
-      <div className="pt-20 px-8 pb-12 max-w-6xl mx-auto">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6">
-          <div>
-            <h1 className="text-3xl font-extrabold text-[#0D1B2A] tracking-[-0.5px]">
-              Your Reports
-            </h1>
-            <p className="text-sm text-[#64748B] mt-1">
-              {predictions.length} scan{predictions.length !== 1 ? "s" : ""} analysed
-            </p>
-          </div>
-          <div className="flex gap-3 mt-4 sm:mt-0">
-            {/* ✅ New Generate Report Button */}
-            <button
-              onClick={generateReport}
-              disabled={generatingReport || predictions.length === 0}
-              className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-[#0EA472] border border-[#0EA472] rounded-xl hover:bg-[#059669] transition disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {generatingReport ? (
-                <Loader2 size={16} className="animate-spin" />
-              ) : (
-                <File size={16} />
-              )}
-              {generatingReport ? "Generating..." : "Generate PDF Report"}
-            </button>
-            <button
-              onClick={() => window.print()}
-              className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-[#0D1B2A] bg-white border border-[#E8EDF2] rounded-xl hover:bg-[#F8FAFB] transition"
-            >
-              <Download size={16} />
-              Export (CSV)
-            </button>
-          </div>
-        </div>
-        {/* Search & filter bar */}
-        <div className="bg-white border border-[#E8EDF2] rounded-2xl p-4 shadow-sm mb-6 flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1">
-            <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
-            <input
-              type="text"
-              placeholder="Search by stage, date, or confidence..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 border border-[#E8EDF2] rounded-xl bg-[#F8FAFB] text-[#0D1B2A] placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#0EA472] focus:border-transparent transition"
-            />
-          </div>
-          <div className="flex gap-2">
-            <select
-              value={sortField}
-              onChange={(e) => setSortField(e.target.value as any)}
-              className="px-3 py-2.5 border border-[#E8EDF2] rounded-xl bg-[#F8FAFB] text-[#0D1B2A] text-sm focus:outline-none focus:ring-2 focus:ring-[#0EA472]"
-            >
-              <option value="timestamp">Date</option>
-              <option value="result">Stage</option>
-              <option value="confidence">Confidence</option>
-            </select>
-            <button
-              onClick={() => setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"))}
-              className="px-3 py-2.5 border border-[#E8EDF2] rounded-xl bg-[#F8FAFB] text-[#0D1B2A] hover:bg-[#F1F5F9] transition"
-            >
-              {sortDirection === "asc" ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-            </button>
-          </div>
+      {/* ── Main ── */}
+      <div className="pt-20 px-8 pb-12 max-w-4xl mx-auto">
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-3xl font-extrabold text-[#0D1B2A] tracking-[-0.5px]">
+            My Reports
+          </h1>
+          <Link
+            href="/generate-report"
+            className="text-sm text-[#0EA472] font-semibold hover:underline"
+          >
+            + Generate new report
+          </Link>
         </div>
 
-        {/* Table */}
-        {filtered.length === 0 ? (
+        {reports.length === 0 ? (
           <div className="bg-white border border-[#E8EDF2] rounded-2xl p-12 text-center shadow-sm">
             <FileImage size={48} className="mx-auto text-[#94A3B8] mb-3" />
-            <h3 className="text-lg font-semibold text-[#0D1B2A]">No scans found</h3>
+            <h3 className="text-lg font-semibold text-[#0D1B2A]">No reports yet</h3>
             <p className="text-sm text-[#64748B] mt-1">
-              {predictions.length === 0
-                ? "You haven't uploaded any MRI scans yet."
-                : "Try adjusting your search filters."}
+              Generate your first report from a scan.
             </p>
-            {predictions.length === 0 && (
-              <Link
-                href="/dashboard"
-                className="inline-block mt-4 text-sm font-semibold text-[#0EA472] hover:underline"
-              >
-                Upload your first scan →
-              </Link>
-            )}
+            <Link
+              href="/generate-report"
+              className="inline-block mt-4 text-sm font-semibold text-[#0EA472] hover:underline"
+            >
+              Go to Generate Report →
+            </Link>
           </div>
         ) : (
-          <div className="bg-white border border-[#E8EDF2] rounded-2xl overflow-hidden shadow-sm">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-[#F8FAFB] border-b border-[#E8EDF2]">
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-[#64748B] uppercase tracking-wider">
-                      Scan
-                    </th>
-                    <th
-                      className="px-4 py-3 text-left text-xs font-semibold text-[#64748B] uppercase tracking-wider cursor-pointer hover:text-[#0D1B2A]"
-                      onClick={() => handleSort("result")}
-                    >
-                      <span className="flex items-center gap-1">
-                        Stage
-                        {sortField === "result" &&
-                          (sortDirection === "asc" ? <ChevronUp size={14} /> : <ChevronDown size={14} />)}
-                      </span>
-                    </th>
-                    <th
-                      className="px-4 py-3 text-left text-xs font-semibold text-[#64748B] uppercase tracking-wider cursor-pointer hover:text-[#0D1B2A]"
-                      onClick={() => handleSort("confidence")}
-                    >
-                      <span className="flex items-center gap-1">
-                        Confidence
-                        {sortField === "confidence" &&
-                          (sortDirection === "asc" ? <ChevronUp size={14} /> : <ChevronDown size={14} />)}
-                      </span>
-                    </th>
-                    <th
-                      className="px-4 py-3 text-left text-xs font-semibold text-[#64748B] uppercase tracking-wider cursor-pointer hover:text-[#0D1B2A]"
-                      onClick={() => handleSort("timestamp")}
-                    >
-                      <span className="flex items-center gap-1">
-                        Date
-                        {sortField === "timestamp" &&
-                          (sortDirection === "asc" ? <ChevronUp size={14} /> : <ChevronDown size={14} />)}
-                      </span>
-                    </th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold text-[#64748B] uppercase tracking-wider">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map((pred) => {
-                    const { bg, text } = getStageBadge(pred.result);
-                    const isExpanded = expandedRows.has(pred.id);
-                    return (
-                      <tr
-                        key={pred.id}
-                        className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFB] transition"
-                      >
-                        {/* Scan thumbnail */}
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-3">
-                            <div className="relative w-10 h-10 rounded-lg overflow-hidden border border-[#E8EDF2] flex-shrink-0">
-                              <Image
-                                src={pred.image_path}
-                                alt="Scan thumbnail"
-                                fill
-                                className="object-cover"
-                              />
-                            </div>
-                            <span className="text-xs text-[#94A3B8]">#{pred.id}</span>
-                          </div>
-                        </td>
-
-                        {/* Stage */}
-                        <td className="px-4 py-3">
-                          <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${bg} ${text}`}>
-                            {pred.result}
-                          </span>
-                        </td>
-
-                        {/* Confidence */}
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            <div className="flex-1 max-w-[80px] h-1.5 rounded-full bg-[#F1F5F9]">
-                              <div
-                                className="h-1.5 rounded-full bg-[#0EA472]"
-                                style={{ width: `${pred.confidence * 100}%` }}
-                              />
-                            </div>
-                            <span className="text-xs font-semibold text-[#0D1B2A]">
-                              {(pred.confidence * 100).toFixed(1)}%
-                            </span>
-                          </div>
-                        </td>
-
-                        {/* Date */}
-                        <td className="px-4 py-3 text-[#64748B] text-xs">
-                          <div className="flex items-center gap-1.5">
-                            <Clock size={14} />
-                            {formatDate(pred.timestamp)}
-                          </div>
-                        </td>
-
-                        {/* Actions */}
-                        <td className="px-4 py-3 text-right">
-                          <button
-                            onClick={() => toggleRow(pred.id)}
-                            className="text-[#0EA472] hover:underline text-xs font-medium"
-                          >
-                            {isExpanded ? "Hide" : "Details"}
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* Pagination (simplified) */}
-        {filtered.length > 0 && (
-          <div className="mt-6 flex items-center justify-between text-sm text-[#64748B]">
-            <span>
-              Showing {filtered.length} of {predictions.length} reports
-            </span>
-            {/* Could add pagination controls here if needed */}
-          </div>
-        )}
-
-        {/* Export options */}
-        {filtered.length > 0 && (
-          <div className="mt-4 p-4 bg-white border border-[#E8EDF2] rounded-2xl shadow-sm flex flex-wrap items-center justify-between gap-3">
-            <span className="text-sm text-[#64748B]">
-              <BarChart3 size={16} className="inline mr-1.5" />
-              Summary: {predictions.filter((p) => p.result === "NonDemented").length} NonDemented,{" "}
-              {predictions.filter((p) => p.result === "VeryMild").length} Very Mild,{" "}
-              {predictions.filter((p) => p.result === "Mild").length} Mild,{" "}
-              {predictions.filter((p) => p.result === "Moderate").length} Moderate
-            </span>
-            <button className="text-sm text-[#0EA472] font-semibold hover:underline">
-              Download full report (CSV)
-            </button>
+          <div className="space-y-4">
+            {reports.map((report) => (
+              <div
+                key={report.id}
+                className="bg-white border border-[#E8EDF2] rounded-2xl p-5 shadow-sm hover:shadow-md transition"
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-lg font-semibold text-[#0D1B2A]">
+                      {report.title}
+                    </h2>
+                    <p className="text-sm text-[#64748B] mt-1 line-clamp-2">
+                      {report.summary}
+                    </p>
+                    <div className="flex items-center gap-2 mt-2 text-xs text-[#94A3B8]">
+                      <Calendar size={14} />
+                      {formatDate(report.created_at)}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleDownload(report.id)}
+                    disabled={downloading === report.id}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-[#0EA472] text-white rounded-xl text-sm font-medium hover:bg-[#059669] transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {downloading === report.id ? (
+                      <Loader2 size={16} className="animate-spin" />
+                    ) : (
+                      <Download size={16} />
+                    )}
+                    {downloading === report.id ? "Downloading..." : "Download PDF"}
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>

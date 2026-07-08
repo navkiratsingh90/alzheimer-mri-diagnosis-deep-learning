@@ -7,7 +7,6 @@ import {
   Upload,
   FileImage,
   Activity,
-  Clock,
   ArrowRight,
   Brain,
   AlertCircle,
@@ -18,8 +17,8 @@ import {
   Scan,
 } from "lucide-react";
 import Image from "next/image";
-import React from 'react'
-import { AuthProvider, useAuth } from "../../lib/authContext";
+import { useAuth } from "../../lib/authContext";
+import api from "../../lib/api";   // <-- your configured axios instance
 
 // ── Types ─────────────────────────────────────────────────────
 interface Prediction {
@@ -29,43 +28,6 @@ interface Prediction {
   confidence: number;
   timestamp: string;
 }
-
-interface User {
-  id: number;
-  username: string;
-  role: string;
-}
-
-const MOCK_PREDICTIONS: Prediction[] = [
-  {
-    id: 101,
-    image_path: "/mock/mri-1.jpg", // this will fail, but we have fallback
-    result: "Mild",
-    confidence: 0.784,
-    timestamp: new Date(Date.now() - 3600000 * 2).toISOString(), // 2 hours ago
-  },
-  {
-    id: 102,
-    image_path: "/mock/mri-2.jpg",
-    result: "NonDemented",
-    confidence: 0.923,
-    timestamp: new Date(Date.now() - 3600000 * 24 * 3).toISOString(), // 3 days ago
-  },
-  {
-    id: 103,
-    image_path: "/mock/mri-3.jpg",
-    result: "VeryMild",
-    confidence: 0.651,
-    timestamp: new Date(Date.now() - 3600000 * 24 * 7).toISOString(), // 7 days ago
-  },
-  {
-    id: 104,
-    image_path: "/mock/mri-4.jpg",
-    result: "Moderate",
-    confidence: 0.892,
-    timestamp: new Date(Date.now() - 3600000 * 24 * 14).toISOString(), // 14 days ago
-  },
-];
 
 // ── Helper to format date ────────────────────────────────────
 const formatDate = (dateStr: string) => {
@@ -79,29 +41,44 @@ const formatDate = (dateStr: string) => {
   });
 };
 
+// ── Get full image URL ──────────────────────────────────────
+const getImageUrl = (path: string) => {
+  if (!path) return null;
+  if (path.startsWith("http")) return path;
+  const base = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+  return `${base}/${path}`;
+};
+
 // ── Main Component ───────────────────────────────────────────
 export default function DashboardPage() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { user, logout } = useAuth(); // token not needed; cookies handle auth
 
-  // ── State with mock data as initial values ─────────────────
-  const { user } = useAuth();
-  // const [user, setUser] = useState<User | null>(MOCK_USER);
-  const [predictions, setPredictions] = useState<Prediction[]>(MOCK_PREDICTIONS);
-  const [loading, setLoading] = useState(false);
+  const [predictions, setPredictions] = useState<Prediction[]>([]);
+  const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [latestResult, setLatestResult] = useState<Prediction | null>(
-    MOCK_PREDICTIONS[0] || null
-  );
+  const [latestResult, setLatestResult] = useState<Prediction | null>(null);
 
-  // ── Simulate loading (optional) ────────────────────────────
+  // ── Fetch predictions ──────────────────────────────────────
+  const fetchPredictions = async () => {
+    try {
+      const res = await api.get<Prediction[]>("/predictions");
+      setPredictions(res.data);
+      if (res.data.length > 0) setLatestResult(res.data[0]);
+    } catch (error) {
+      console.error("Error fetching predictions:", error);
+      // If 401, interceptor will redirect to login
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    // You can uncomment this to simulate a loading state
-    // setLoading(true);
-    // setTimeout(() => setLoading(false), 800);
+    fetchPredictions();
   }, []);
 
   // ── Handle file selection ──────────────────────────────────
@@ -113,38 +90,41 @@ export default function DashboardPage() {
     setUploadError(null);
   };
 
-  // ── Handle upload (simulated) ──────────────────────────────
+  // ── Handle upload ──────────────────────────────────────────
   const handleUpload = async () => {
     if (!selectedFile) return;
     setUploading(true);
     setUploadError(null);
 
-    // Simulate upload and add mock prediction
-    const newPred: Prediction = {
-      id: Date.now(),
-      image_path: previewUrl || "",
-      result: ["NonDemented", "VeryMild", "Mild", "Moderate"][
-        Math.floor(Math.random() * 4)
-      ],
-      confidence: 0.7 + Math.random() * 0.25,
-      timestamp: new Date().toISOString(),
-    };
+    const formData = new FormData();
+    formData.append("file", selectedFile);
 
-    // Add to list and update latest
-    setPredictions((prev) => [newPred, ...prev]);
-    setLatestResult(newPred);
+    try {
+      const res = await api.post<Prediction>("/upload", formData, {
+        headers: {
+          "Content-Type": "multipart/form-data", // Let axios set boundary
+        },
+      });
 
-    // Reset file input
-    setSelectedFile(null);
-    setPreviewUrl(null);
-    if (fileInputRef.current) fileInputRef.current.value = "";
+      const newPred = res.data;
+      setPredictions((prev) => [newPred, ...prev]);
+      setLatestResult(newPred);
 
-    setUploading(false);
+      // Reset file input
+      setSelectedFile(null);
+      setPreviewUrl(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    } catch (error: any) {
+      const msg = error.response?.data?.detail || error.message || "Upload failed";
+      setUploadError(msg);
+    } finally {
+      setUploading(false);
+    }
   };
 
-  // ── Logout (simulated) ──────────────────────────────────────
+  // ── Logout ──────────────────────────────────────────────────
   const handleLogout = async () => {
-    // Simulate logout
+    if (logout) logout(); // clears auth state; also call logout endpoint if needed
     router.push("/login");
   };
 
@@ -160,7 +140,7 @@ export default function DashboardPage() {
   // ── Render ──────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-[#F8FAFB] font-['Inter',-apple-system,sans-serif]">
-      {/* ── Navbar ── */}
+      {/* Navbar (unchanged) */}
       <nav className="fixed top-0 left-0 right-0 z-50 bg-white border-b border-[#E8EDF2] px-8 h-16 flex items-center justify-between shadow-sm">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#0EA472] to-[#059669] flex items-center justify-center">
@@ -193,9 +173,8 @@ export default function DashboardPage() {
         </div>
       </nav>
 
-      {/* ── Main content ── */}
+      {/* Main content */}
       <div className="pt-20 px-8 pb-12 max-w-[1200px] mx-auto">
-        {/* Welcome */}
         <div className="mb-8">
           <h1 className="text-3xl font-extrabold text-[#0D1B2A] tracking-[-0.5px]">
             Welcome back, {user?.username || "User"} 👋
@@ -206,7 +185,7 @@ export default function DashboardPage() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* ── Upload & Result Column (2/3) ── */}
+          {/* Left column: Upload & Latest Result */}
           <div className="lg:col-span-2 space-y-6">
             {/* Upload Card */}
             <div className="bg-white border border-[#E8EDF2] rounded-2xl p-6 shadow-sm">
@@ -316,19 +295,17 @@ export default function DashboardPage() {
                   <div className="relative w-40 h-40 rounded-lg overflow-hidden border border-[#E8EDF2] flex-shrink-0 bg-[#F1F5F9] flex items-center justify-center">
                     {latestResult.image_path ? (
                       <Image
-                        src={latestResult.image_path}
+                        src={getImageUrl(latestResult.image_path) || ""}
                         alt="Latest scan"
                         fill
                         className="object-cover"
                         onError={(e) => {
-                          // Fallback if image fails to load
                           e.currentTarget.style.display = "none";
                         }}
                       />
                     ) : (
                       <FileImage size={32} className="text-[#94A3B8]" />
                     )}
-                    {/* Fallback icon if image fails */}
                     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                       <FileImage size={32} className="text-[#94A3B8] opacity-50" />
                     </div>
@@ -338,11 +315,11 @@ export default function DashboardPage() {
                       <span className="text-sm text-[#64748B]">Result:</span>
                       <span
                         className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                          latestResult.result === "NonDemented"
+                          latestResult.result === "Non Demented"
                             ? "bg-[#D1FAE5] text-[#065F46]"
-                            : latestResult.result === "VeryMild"
+                            : latestResult.result === "Very mild Dementia"
                             ? "bg-[#DBEAFE] text-[#1E40AF]"
-                            : latestResult.result === "Mild"
+                            : latestResult.result === "Mild Dementia"
                             ? "bg-[#FEF3C7] text-[#92400E]"
                             : "bg-[#FEE2E2] text-[#991B1B]"
                         }`}
@@ -381,7 +358,7 @@ export default function DashboardPage() {
             )}
           </div>
 
-          {/* ── Sidebar ── */}
+          {/* Sidebar */}
           <div className="space-y-6">
             {/* Quick actions */}
             <div className="bg-white border border-[#E8EDF2] rounded-2xl p-6 shadow-sm">
