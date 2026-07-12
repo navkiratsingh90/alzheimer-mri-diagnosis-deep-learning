@@ -15,6 +15,8 @@ import {
   Activity,
   BarChart3,
 } from "lucide-react";
+import { useAuth } from "@/lib/authContext";
+import { useRouter } from "next/navigation";
 
 // ── Types ──────────────────────────────────────────────────
 interface FeatureCardProps {
@@ -105,6 +107,9 @@ const Stat = ({ value, label }: StatProps) => (
 
 // ── Main Page ─────────────────────────────────────────────
 export default function HomePage() {
+  const router = useRouter()
+  const user = useAuth()
+  if (!user) router.push('/login')
   return (
     <div className="font-['Inter',-apple-system,BlinkMacSystemFont,sans-serif] bg-[#F8FAFB] min-h-screen">
 

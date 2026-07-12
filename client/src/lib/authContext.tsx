@@ -18,8 +18,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const res = await api.get("/auth/me");
         setUser(res.data);
-        console.log(res);
-        
       } catch {
         setUser(null);
       } finally {
@@ -38,9 +36,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await api.post("/auth/login", formData, {
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
       });
-      // Fetch user after successful login
-      // const res = await api.get("/auth/me");
-      // setUser(res.data);
+      // ✅ Fetch user after successful login
+      const res = await api.get("/auth/me");
+      setUser(res.data);
       router.push("/dashboard");
     } catch (error) {
       console.error("Login error:", error);
@@ -57,7 +55,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await api.post("/auth/register", formData, {
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
       });
-      // After successful registration, redirect to login
       router.push("/login");
     } catch (error) {
       console.error("Registration error:", error);
@@ -77,6 +74,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const isAdmin = user?.role === "admin";
+
+  // ✅ Redirect only when not loading and user is null
+  useEffect(() => {
+    if (!loading && !user) {
+      router.push("/login");
+    }
+  }, [loading, user, router]);
+
+  // ✅ Show nothing while loading (or a loading spinner)
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#0EA472]"></div>
+      </div>
+    );
+  }
 
   return (
     <AuthContext.Provider
