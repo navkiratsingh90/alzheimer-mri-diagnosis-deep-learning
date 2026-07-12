@@ -5,6 +5,19 @@ It generates professional PDF reports, provides an AI‑powered clinical chat (w
 
 ---
 
+## 🎯 Why We Built This
+
+Alzheimer’s disease affects millions worldwide, and early detection is critical for better patient outcomes. However, access to expert radiologists and neurologists is limited in many regions. **NeuroSight** was created to:
+
+- **Democratise early screening** – Provide an accessible, AI‑assisted first‑line tool for clinicians and patients.
+- **Bridge the gap between AI and clinical practice** – By generating human‑readable reports with clear recommendations, we make AI outputs actionable.
+- **Empower continuous learning** – The built‑in clinical chat (with RAG) allows doctors and researchers to query uploaded PDFs (papers, patient notes) and get instant, evidence‑based answers.
+- **Streamline patient monitoring** – All predictions and reports are stored per user, enabling easy tracking of disease progression over time.
+
+Ultimately, NeuroSight aims to support – not replace – medical professionals, speeding up triage and helping patients receive timely care.
+
+---
+
 ## 🚀 Features
 
 - **🔬 MRI Classification** – Upload an MRI scan and get an instant prediction (Non‑Demented, Very Mild, Mild, or Moderate Dementia) with confidence score.
@@ -40,7 +53,7 @@ It generates professional PDF reports, provides an AI‑powered clinical chat (w
 
 ---
 
-## 📁 Project Structure
+## 📁 File Structure
 
 neuroSight/
 ├── server/ # FastAPI backend
