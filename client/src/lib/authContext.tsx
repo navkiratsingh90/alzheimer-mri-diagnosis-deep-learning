@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import api from "./api";
 import { User, AuthContextType } from "./types";
 
@@ -11,12 +11,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+  const pathname = usePathname(); // Get current path
 
   // Fetch current user on mount
   useEffect(() => {
     const fetchUser = async () => {
       try {
-        const res = await api.get("/auth/me");
+        const res = await api.get("");
         setUser(res.data);
       } catch {
         setUser(null);
@@ -36,7 +37,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await api.post("/auth/login", formData, {
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
       });
-      // ✅ Fetch user after successful login
       const res = await api.get("/auth/me");
       setUser(res.data);
       router.push("/dashboard");
@@ -75,14 +75,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const isAdmin = user?.role === "admin";
 
-  // ✅ Redirect only when not loading and user is null
-  useEffect(() => {
-    if (!loading && !user) {
-      router.push("/login");
-    }
-  }, [loading, user, router]);
+  // ✅ Redirect only if NOT on login/register and user is not authenticated
+  // useEffect(() => {
+  //   if (!loading && !user) {
+  //     const publicPaths = ["/login", "/register"];
+  //     if (!publicPaths.includes(pathname)) {
+  //       router.push("/login");
+  //     }
+  //   }
+  // }, [loading, user, router, pathname]);
 
-  // ✅ Show nothing while loading (or a loading spinner)
+  // Show loading spinner
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">

@@ -77,17 +77,6 @@ export default function ChatPage() {
   }, [messages]);
 
   // ── Fetch user info ──────────────────────────────────────
-  useEffect(() => {
-    const fetchUser = async () => {
-      try {
-        const res = await api.get("/auth/me");
-        setUser(res.data);
-      } catch {
-        router.push("/login");
-      }
-    };
-    fetchUser();
-  }, [router]);
 
   // ── Fetch chat history ──────────────────────────────────
   useEffect(() => {

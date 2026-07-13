@@ -79,33 +79,33 @@ export default function AdminPredictionsPage() {
   );
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
 
-  // ── Fetch data ─────────────────────────────────────────────
-  useEffect(() => {
-    const fetchData = async () => {
-    //   try {
-    //     // Verify admin
-    //     const meRes = await api.get("/auth/me");
-    //     const user = meRes.data;
-    //     setCurrentUser(user);
-    //     if (user.role !== "admin") {
-    //       router.push("/dashboard");
-    //       return;
-    //     }
+  // // ── Fetch data ─────────────────────────────────────────────
+  // useEffect(() => {
+  //   const fetchData = async () => {
+  //   //   try {
+  //   //     // Verify admin
+  //   //     const meRes = await api.get("/auth/me");
+  //   //     const user = meRes.data;
+  //   //     setCurrentUser(user);
+  //   //     if (user.role !== "admin") {
+  //   //       router.push("/dashboard");
+  //   //       return;
+  //   //     }
 
-    //     // Fetch all predictions (admin endpoint)
-    //     const predRes = await api.get("/admin/predictions");
-    //     // Assuming the backend returns array with username attached
-    //     // or we can fetch users separately and join, but simpler: backend includes username
-    //     setPredictions(predRes.data);
-    //     setFiltered(predRes.data);
-    //   } catch (err) {
-    //     setError("Failed to load predictions. Please try again.");
-    //   } finally {
-    //     setLoading(false);
-    //   }
-    };
-    fetchData();
-  }, [router]);
+  //   //     // Fetch all predictions (admin endpoint)
+  //   //     const predRes = await api.get("/admin/predictions");
+  //   //     // Assuming the backend returns array with username attached
+  //   //     // or we can fetch users separately and join, but simpler: backend includes username
+  //   //     setPredictions(predRes.data);
+  //   //     setFiltered(predRes.data);
+  //   //   } catch (err) {
+  //   //     setError("Failed to load predictions. Please try again.");
+  //   //   } finally {
+  //   //     setLoading(false);
+  //   //   }
+  //   };
+  //   fetchData();
+  // }, [router]);
 
   // ── Search & sort ──────────────────────────────────────────
   useEffect(() => {
