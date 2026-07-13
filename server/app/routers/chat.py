@@ -85,7 +85,7 @@ def call_gemini(question: str) -> str:
     if not settings.GEMINI_API_KEY:
         raise Exception("Gemini API key not configured")
 
-    model = genai.GenerativeModel("gemini-flash-latest")
+    model = genai.GenerativeModel("gemini-1.5-flash")
     prompt = f"You are a helpful assistant for Alzheimer's diagnosis. Answer concisely and professionally: {question}"
     response = model.generate_content(prompt)
 

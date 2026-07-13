@@ -14,7 +14,7 @@ def generate_ai_summary(predictions: list) -> str:
 
     # Use a single reliable model
     try:
-        model = genai.GenerativeModel("gemini-flash-latest")
+        model = genai.GenerativeModel("gemini-1.5-flash")
         # Quick test
         model.generate_content("test", generation_config={"max_output_tokens": 1})
     except Exception:

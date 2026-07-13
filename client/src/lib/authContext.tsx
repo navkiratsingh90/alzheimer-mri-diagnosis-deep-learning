@@ -17,7 +17,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const fetchUser = async () => {
       try {
-        const res = await api.get("");
+        const res = await api.get("/auth/me");
         setUser(res.data);
       } catch {
         setUser(null);
@@ -76,14 +76,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isAdmin = user?.role === "admin";
 
   // ✅ Redirect only if NOT on login/register and user is not authenticated
-  // useEffect(() => {
-  //   if (!loading && !user) {
-  //     const publicPaths = ["/login", "/register"];
-  //     if (!publicPaths.includes(pathname)) {
-  //       router.push("/login");
-  //     }
-  //   }
-  // }, [loading, user, router, pathname]);
+  useEffect(() => {
+    if (!loading && !user) {
+      const publicPaths = ["/login", "/register"];
+      if (!publicPaths.includes(pathname)) {
+        router.push("/login");
+      }
+    }
+  }, [loading, user, router, pathname]);
 
   // Show loading spinner
   if (loading) {
