@@ -10,13 +10,11 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
     Raises 401 if missing/invalid.
     """
     token = request.cookies.get("access_token")
-    print("TOKEN:", token)
 
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
     payload = decode_token(token)
-    print("PAYLOAD:", payload)
     if not payload:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
     username = payload.get("sub")

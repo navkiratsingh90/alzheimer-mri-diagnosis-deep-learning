@@ -11,6 +11,7 @@ pillow
 openai
 langchain
 langchain-community
+psycopg2-binary
 langchain-google-genai
 langchain-huggingface        
 google-genai
