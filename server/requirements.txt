@@ -13,7 +13,7 @@ langchain
 langchain-community
 langchain-google-genai
 langchain-huggingface        
-google-generativeai
+google-genai
 chromadb
 sentence-transformers
 pypdf

@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Form, UploadFile, File
 from sqlalchemy.orm import Session
 from typing import List
+import time
+import random
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
 from app.models.user import User
@@ -13,16 +15,28 @@ import traceback
 from app.core.config import settings
 import os
 import shutil
-import google.generativeai as genai
+
+# google.generativeai is fully deprecated and Google has already shut down
+# ALL Gemini 1.0/1.5 models on it (returns 404 for every request now).
+# Migrated to the current google-genai SDK.
+from google import genai
+from google.genai import errors as genai_errors
 
 # ─── Router ──────────────────────────────────────────────────────
 router = APIRouter(prefix="/chat", tags=["chat"])
 
-# ─── Configure Gemini ──────────────────────────────────────────
+# ─── Gemini client (new SDK — no global .configure(), just a client object) ──
+_gemini_client = None
 if settings.GEMINI_API_KEY:
-    genai.configure(api_key=settings.GEMINI_API_KEY)
+    _gemini_client = genai.Client(api_key=settings.GEMINI_API_KEY)
 else:
     print("⚠️ GEMINI_API_KEY not configured")
+
+# Auto-updating alias instead of a dated model name — avoids having to hunt
+# down and replace a hardcoded model string every time Google retires one
+# (this codebase has already been broken by gemini-1.5-flash, gemini-2.5-flash,
+# and a dated gemini-3.5-flash pin in the last few weeks alone).
+GEMINI_MODEL = "gemini-flash-latest"
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 
@@ -59,7 +73,7 @@ def get_retrieval_chain(user_id: int):
         return None
 
     llm = ChatGoogleGenerativeAI(
-        model="gemini-1.5-flash",
+        model=GEMINI_MODEL,
         temperature=0.2,
         google_api_key=settings.GEMINI_API_KEY,
     )
@@ -80,18 +94,48 @@ def invalidate_retrieval_chain(user_id: int):
     _retrieval_chains.pop(user_id, None)
 
 
-def call_gemini(question: str) -> str:
-    """Call Gemini directly."""
-    if not settings.GEMINI_API_KEY:
+def call_gemini(question: str, max_retries: int = 3) -> str:
+    """Call Gemini directly, with retry handling for free-tier rate limits (429s)."""
+    if not _gemini_client:
         raise Exception("Gemini API key not configured")
 
-    model = genai.GenerativeModel("gemini-1.5-flash")
     prompt = f"You are a helpful assistant for Alzheimer's diagnosis. Answer concisely and professionally: {question}"
-    response = model.generate_content(prompt)
 
-    if not response or not response.text:
-        raise Exception("Empty response from Gemini")
-    return response.text
+    last_error = None
+    for attempt in range(max_retries):
+        try:
+            response = _gemini_client.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=prompt,
+            )
+            if not response or not response.text:
+                raise Exception("Empty response from Gemini")
+            return response.text
+
+        except genai_errors.ClientError as e:
+            last_error = e
+            # 429 = rate limited. Google's error response includes the exact
+            # wait time it wants — use that instead of guessing a backoff.
+            if getattr(e, "code", None) == 429 and attempt < max_retries - 1:
+                retry_delay = _extract_retry_delay(e) or (2 ** attempt + random.uniform(0, 1))
+                time.sleep(retry_delay)
+                continue
+            raise Exception(f"Gemini error: {e}") from e
+
+    raise Exception(f"Gemini error after {max_retries} retries: {last_error}")
+
+
+def _extract_retry_delay(error) -> float | None:
+    """Pull the server-suggested retry delay (in seconds) out of a 429 error, if present."""
+    try:
+        details = getattr(error, "details", None) or {}
+        for item in details.get("error", {}).get("details", []):
+            if "retryDelay" in item:
+                # e.g. "8s" -> 8.0
+                return float(str(item["retryDelay"]).rstrip("s"))
+    except Exception:
+        pass
+    return None
 
 
 # ─── POST /chat ────────────────────────────────────────────────
