@@ -12,8 +12,8 @@ app = FastAPI(title="NeuroSight API", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:3000",            
-        "https://alzheimer-mri-diagnosis-deep-learni-eight.vercel.app/",     
+        "http://localhost:3000",
+        "https://alzheimer-mri-diagnosis-deep-learni-eight.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
