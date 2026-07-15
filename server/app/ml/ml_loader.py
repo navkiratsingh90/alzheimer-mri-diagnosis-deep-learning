@@ -6,7 +6,7 @@ from typing import Tuple
 
 from app.core.config import settings
 
-# ── Constants matching the notebook ───────────────────────
+# ── Constants matching the notebook ─────────────────────── 
 IMG_SIZE = (128, 128)
 CLASSES = [
     "Non Demented",

@@ -33,7 +33,7 @@ async def register(
     - **password**: minimum 8 characters (you can add strength rules).
     """
     # Check if user exists
-    # print(f"{username} and {password}")
+    print(f"{username} and {password}")
     existing = db.query(User).filter(User.username == username).first()
     if existing:
         raise HTTPException(status_code=400, detail="Username already taken")

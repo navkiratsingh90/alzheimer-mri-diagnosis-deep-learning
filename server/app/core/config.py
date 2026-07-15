@@ -1,52 +1,103 @@
 import os
 import sys
+from pathlib import Path
+from dotenv import load_dotenv
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))  # app/core
-APP_DIR = os.path.dirname(BASE_DIR)                      # app — ml_model/ lives here, not under core/
+# ----------------------------------------------------
+# Project Root
+# ----------------------------------------------------
+# server/
+# ├── .env
+# ├── app/
+# │   ├── core/
+# │   │   └── config.py
+# │   └── ml_model/
+# │       └── densenet_model.h5
+# ----------------------------------------------------
 
-ENVIRONMENT = os.getenv("ENVIRONMENT", "development")  # set ENVIRONMENT=production in Render
+ROOT_DIR = Path(__file__).resolve().parents[2]
+load_dotenv(ROOT_DIR / ".env")
+
+BASE_DIR = Path(__file__).resolve().parent
+APP_DIR = BASE_DIR.parent
+
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
 
 
-def _get_secret_key() -> str:
-    key = os.getenv("SECRET_KEY", "")
-    if not key:
-        if ENVIRONMENT == "production":
-            sys.exit("FATAL: SECRET_KEY environment variable is not set in production.")
-        return "dev-secret-change-this"  # fine for local dev only
-    return key
+def get_secret_key():
+    secret = os.getenv("SECRET_KEY")
+
+    if secret:
+        return secret
+
+    if ENVIRONMENT == "production":
+        sys.exit("FATAL: SECRET_KEY not configured.")
+
+    return "dev-secret-key"
 
 
-def _get_database_url() -> str:
-    url = os.getenv("DATABASE_URL", "")
-    if not url:
-        instance_dir = os.path.join(BASE_DIR, "instance")
-        os.makedirs(instance_dir, exist_ok=True)
-        return f"sqlite:///{os.path.join(instance_dir, 'alzheimer.db')}"
+def get_database_url():
+    database_url = os.getenv("DATABASE_URL")
 
-    if url.startswith("postgres://"):
-        url = url.replace("postgres://", "postgresql://", 1)
-    return url
+    # Local SQLite
+    if not database_url:
+        instance = BASE_DIR / "instance"
+        instance.mkdir(exist_ok=True)
+
+        return f"sqlite:///{instance / 'alzheimer.db'}"
+
+    # Render compatibility
+    if database_url.startswith("postgres://"):
+        database_url = database_url.replace(
+            "postgres://",
+            "postgresql://",
+            1
+        )
+
+    # Render PostgreSQL SSL
+    if (
+        database_url.startswith("postgresql://")
+        and "sslmode=" not in database_url
+    ):
+        sep = "&" if "?" in database_url else "?"
+        database_url += f"{sep}sslmode=require"
+
+    return database_url
 
 
 class Settings:
-    SECRET_KEY: str = _get_secret_key()
-    ALGORITHM: str = os.getenv("ALGORITHM", "HS256")
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 30))
-    GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
-    DATABASE_URL: str = _get_database_url()
 
-    # FIXED: was os.path.join(BASE_DIR, "ml_model", ...) which pointed to
-    # app/core/ml_model/ — the actual folder is app/ml_model/ (a sibling of
-    # core/, not nested inside it). This was silently causing every
-    # prediction to fail in production while working locally if anyone's
-    # local dev path happened to differ.
-    MODEL_PATH: str = os.getenv("MODEL_PATH", os.path.join(APP_DIR, "ml_model", "densenet_model.h5"))
+    SECRET_KEY = get_secret_key()
+
+    ALGORITHM = os.getenv("ALGORITHM", "HS256")
+
+    ACCESS_TOKEN_EXPIRE_MINUTES = int(
+        os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30")
+    )
+
+    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+
+    DATABASE_URL = get_database_url()
+    UPLOAD_DIR = os.getenv("UPLOAD_DIR", "static/uploads")
+    MODEL_PATH = os.getenv(
+        "MODEL_PATH",
+        str(APP_DIR / "ml_model" / "densenet_model.h5")
+    )
 
     def __init__(self):
+
+        print("=" * 60)
+        print("Environment :", ENVIRONMENT)
+        print("Database    :", self.DATABASE_URL)
+        print("Model Path  :", self.MODEL_PATH)
+        print("Model Exists:", os.path.exists(self.MODEL_PATH))
+        print("=" * 60) 
+
         if ENVIRONMENT == "production" and not self.GEMINI_API_KEY:
-            print("⚠️  WARNING: GEMINI_API_KEY not set — AI summaries will use fallback text only.")
+            print("⚠ GEMINI_API_KEY is not configured.")
+
         if not os.path.exists(self.MODEL_PATH):
-            print(f"⚠️  WARNING: Model file not found at {self.MODEL_PATH} — predictions will fail.")
+            print("⚠ TensorFlow model file not found.")
 
 
 settings = Settings()

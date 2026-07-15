@@ -58,7 +58,7 @@ def get_retrieval_chain(user_id: int):
         embedding_function=get_embeddings(),
         collection_name=f"user_{user_id}_docs",
     )
-
+ 
     # Quick check
     try:
         test = vectorstore.similarity_search("test", k=1)

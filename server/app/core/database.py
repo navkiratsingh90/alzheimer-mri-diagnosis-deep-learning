@@ -18,8 +18,10 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 def get_db():
+    print("Creating DB session")
     db = SessionLocal()
     try:
         yield db
     finally:
-        db.close()
+        print("Closing DB session")
+        db.close()  
