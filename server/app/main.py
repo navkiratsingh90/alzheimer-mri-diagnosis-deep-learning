@@ -14,7 +14,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
-        "https://alzheimer-mri-diagnosis-deep-learni-alpha.vercel.app/",
+        "https://alzheimer-mri-diagnosis-deep-learni-alpha.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],

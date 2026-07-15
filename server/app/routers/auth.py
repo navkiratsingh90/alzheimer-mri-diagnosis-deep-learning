@@ -82,10 +82,10 @@ async def login(
         key="access_token",
         value=token,
         httponly=True,
-        secure=False,          # False for localhost (HTTP)
-        samesite="lax",        # Works for same‑site (same hostname)
+        secure=True,           # ✅ Must be True in production
+        samesite="none",       # ✅ Required for cross‑domain
         path="/",
-        max_age=60 * 60 * 24 * 7,
+        max_age=60*60*24*7,
     )
     return {"message": "Login successful"}
 
