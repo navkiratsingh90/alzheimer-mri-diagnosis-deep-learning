@@ -1,7 +1,9 @@
 import axios from "axios";
 
+const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+
 const api = axios.create({
-  baseURL: "http://localhost:8000",
+  baseURL: API_URL,
   withCredentials: true, // send cookies (JWT stored in HTTP-only cookie)
   headers: {
     "Content-Type": "application/json",
@@ -13,7 +15,6 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      // If we're on the client, redirect to login
       if (typeof window !== "undefined") {
         window.location.href = "/login";
       }
