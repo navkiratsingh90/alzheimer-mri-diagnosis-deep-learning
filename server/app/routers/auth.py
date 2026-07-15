@@ -82,10 +82,10 @@ async def login(
         key="access_token",
         value=token,
         httponly=True,
-        secure=False,          # set to True in production with HTTPS
-        samesite="lax",
+        secure=False,          # False for localhost (HTTP)
+        samesite="lax",        # Works for same‑site (same hostname)
         path="/",
-        max_age=60 * 60 * 24 * 7,  # 7 days (adjust as needed)
+        max_age=60 * 60 * 24 * 7,
     )
     return {"message": "Login successful"}
 
@@ -96,6 +96,7 @@ async def get_me(user: User = Depends(get_current_user)):
     """
     Get the authenticated user's info.
     """
+    print("here")
     return user
 
 

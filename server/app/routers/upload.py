@@ -59,7 +59,7 @@ async def upload_mri(
     timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     safe_filename = f"{timestamp}_{file.filename}"
     file_path = os.path.join(settings.UPLOAD_DIR, safe_filename)
-
+    file_path = file_path.replace("\\", "/")  # ← add this line 
     # Save file
     try:
         with open(file_path, "wb") as buffer:

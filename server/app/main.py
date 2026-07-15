@@ -50,5 +50,9 @@ def fix_db():
     return {"message": "✅ Users table recreated with default role"}
 
 @app.get("/")
-def root():
+def root(): 
     return {"message": "NeuroSight API is running"} 
+
+@app.get("/test")
+def root(): 
+    return {"message": "testing route"} 

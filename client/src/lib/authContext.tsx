@@ -11,13 +11,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
-  const pathname = usePathname(); // Get current path
+  const pathname = usePathname();
 
-  // Fetch current user on mount
+  // ── Fetch current user – but NOT on public pages ──
   useEffect(() => {
+    console.log(pathname);
+    
+    const publicPaths = ["/login", "/register"];
+    if (publicPaths.includes(pathname)) {
+      setLoading(false);
+      return;
+    }
+
     const fetchUser = async () => {
+      setLoading(true);
       try {
         const res = await api.get("/auth/me");
+        console.log(res.data);
+        
         setUser(res.data);
       } catch {
         setUser(null);
@@ -26,8 +37,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     };
     fetchUser();
-  }, []);
+  }, [pathname]);
 
+  // ── Login ──
   const login = async (username: string, password: string) => {
     const formData = new URLSearchParams();
     formData.append("username", username);
@@ -39,13 +51,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
       const res = await api.get("/auth/me");
       setUser(res.data);
-      router.push("/dashboard");
+      router.replace("/dashboard");
     } catch (error) {
       console.error("Login error:", error);
       throw error;
     }
   };
 
+  // ── Register ──
   const register = async (username: string, password: string) => {
     const formData = new URLSearchParams();
     formData.append("username", username);
@@ -55,13 +68,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await api.post("/auth/register", formData, {
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
       });
-      router.push("/login");
+      router.replace("/login");
     } catch (error) {
       console.error("Registration error:", error);
       throw error;
     }
   };
 
+  // ── Logout ──
   const logout = async () => {
     try {
       await api.get("/auth/logout");
@@ -69,23 +83,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error("Logout error:", error);
     } finally {
       setUser(null);
-      router.push("/login");
+      // router.replace("/login");
     }
   };
 
   const isAdmin = user?.role === "admin";
 
-  // ✅ Redirect only if NOT on login/register and user is not authenticated
+  // ── Redirect unauthenticated users from protected pages ──
   useEffect(() => {
-    if (!loading && !user) {
-      const publicPaths = ["/login", "/register"];
-      if (!publicPaths.includes(pathname)) {
-        router.push("/login");
-      }
+    if (loading) return;
+    const publicPaths = ["/login", "/register", "/"];
+    if (!user && !publicPaths.includes(pathname)) {
+      router.replace("/login");
     }
   }, [loading, user, router, pathname]);
 
-  // Show loading spinner
+  // ── Loading spinner ──
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">

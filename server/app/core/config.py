@@ -75,7 +75,7 @@ class Settings:
         os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30")
     )
 
-    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "") 
 
     DATABASE_URL = get_database_url()
     UPLOAD_DIR = os.getenv("UPLOAD_DIR", "static/uploads")

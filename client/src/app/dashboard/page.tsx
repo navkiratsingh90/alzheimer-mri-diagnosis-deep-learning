@@ -45,7 +45,7 @@ const formatDate = (dateStr: string) => {
 const getImageUrl = (path: string) => {
   if (!path) return null;
   if (path.startsWith("http")) return path;
-  const base = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+  const base = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
   return `${base}/${path}`;
 };
 
@@ -68,6 +68,7 @@ export default function DashboardPage() {
     try {
       const res = await api.get<Prediction[]>("/predictions");
       setPredictions(res.data);
+      console.log(res.data);
       if (res.data.length > 0) setLatestResult(res.data[0]);
     } catch (error) {
       console.error("Error fetching predictions:", error);
@@ -295,14 +296,12 @@ export default function DashboardPage() {
                   <div className="relative w-40 h-40 rounded-lg overflow-hidden border border-[#E8EDF2] flex-shrink-0 bg-[#F1F5F9] flex items-center justify-center">
                     {latestResult.image_path ? (
                       <Image
-                        src={getImageUrl(latestResult.image_path) || ""}
-                        alt="Latest scan"
-                        fill
-                        className="object-cover"
-                        onError={(e) => {
-                          e.currentTarget.style.display = "none";
-                        }}
-                      />
+                      src={getImageUrl(latestResult.image_path) || "/placeholder.png"}
+                      alt="Scan"
+                      fill
+                      className="object-cover"
+                      unoptimized
+                    />
                     ) : (
                       <FileImage size={32} className="text-[#94A3B8]" />
                     )}
