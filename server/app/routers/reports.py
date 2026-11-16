@@ -30,62 +30,98 @@ async def get_predictions(
         .all()
     )
     return predictions
-
 @router.post("/generate", status_code=status.HTTP_201_CREATED)
 async def generate_report(
     payload: dict,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    prediction_id = payload.get("prediction_id")
-    if not prediction_id:
-        raise HTTPException(400, "prediction_id is required")
-    
-    prediction = db.query(Prediction).filter(
-        Prediction.id == prediction_id,
-        Prediction.user_id == user.id
-    ).first()
-    if not prediction:
-        raise HTTPException(404, "Prediction not found")
+    try:
+        prediction_id = payload.get("prediction_id")
 
-    # Prepare data for AI summary
-    pred_data = {
-        "result": prediction.result,
-        "confidence": prediction.confidence,
-        "timestamp": prediction.timestamp,
-        "image_path": prediction.image_path,
-    }
-    summary = generate_ai_summary([pred_data])
-    if not summary:
-        summary = f"Patient diagnosed with {prediction.result} (confidence {prediction.confidence:.1%})."
+        if not prediction_id:
+            raise HTTPException(
+                status_code=400,
+                detail="prediction_id is required"
+            )
 
-    # Generate PDF
-    title = f"Report – {datetime.utcnow().strftime('%Y-%m-%d %H:%M')}"
-    timestamp_str = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-    filename = f"report_{user.id}_{timestamp_str}.pdf"
-    reports_dir = "static/reports"
-    os.makedirs(reports_dir, exist_ok=True)
-    file_path = os.path.join(reports_dir, filename)
+        prediction = db.query(Prediction).filter(
+            Prediction.id == prediction_id,
+            Prediction.user_id == user.id
+        ).first()
 
-    generate_pdf_report(title, summary, pred_data, file_path)
+        if not prediction:
+            raise HTTPException(
+                status_code=404,
+                detail="Prediction not found"
+            )
 
-    # ✅ Use prediction_ids (String) column
-    db_report = Report(
-        user_id=user.id,
-        title=title,
-        summary=summary,
-        file_path=file_path,
-        # no prediction_ids
-    )
-    db.add(db_report)
-    db.commit()
-    db.refresh(db_report)
+        pred_data = {
+            "result": prediction.result,
+            "confidence": float(prediction.confidence),
+            "timestamp": str(prediction.timestamp),
+            "image_path": prediction.image_path,
+        }
 
-    return {
-        "message": "Report generated",
-        "report_id": db_report.id,
-        "file_path": file_path
-    }
+        # Generate AI summary
+        summary = generate_ai_summary([pred_data])
+
+        if not summary:
+            summary = (
+                f"Prediction result: {prediction.result}. "
+                f"Confidence: {float(prediction.confidence):.1%}."
+            )
+
+        # Generate PDF
+        now = datetime.utcnow()
+
+        title = f"Report - {now.strftime('%Y-%m-%d %H:%M')}"
+        filename = f"report_{user.id}_{now.strftime('%Y%m%d_%H%M%S')}.pdf"
+
+        reports_dir = os.path.join("static", "reports")
+        os.makedirs(reports_dir, exist_ok=True)
+
+        file_path = os.path.join(reports_dir, filename)
+
+        generate_pdf_report(
+            title,
+            summary,
+            pred_data,
+            file_path
+        )
+
+        if not os.path.exists(file_path):
+            raise Exception("PDF file was not created")
+
+        # Save report in database
+        db_report = Report(
+            user_id=user.id,
+            title=title,
+            summary=summary,
+            file_path=file_path
+        )
+
+        db.add(db_report)
+        db.commit()
+        db.refresh(db_report)
+
+        return {
+            "message": "Report generated successfully",
+            "report_id": db_report.id,
+            "file_path": file_path
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        db.rollback()
+        print("REPORT GENERATION ERROR:", repr(e))
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Report generation failed: {str(e)}"
+        )
 
 @router.get("/list", response_model=List[ReportResponse])
 async def list_reports(

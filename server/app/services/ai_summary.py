@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 # Auto-updating alias — avoids re-breaking every time Google retires a
 # dated model name (this app has already hit dead gemini-1.5-flash and
 # gemini-2.5-flash model IDs).
-GEMINI_MODEL = "gemini-flash-latest"
+GEMINI_MODEL = "gemini-3.6-flash"
 
 _client = None
 if settings.GEMINI_API_KEY:
@@ -27,7 +27,7 @@ def _extract_retry_delay(error) -> float | None:
         for item in details.get("error", {}).get("details", []):
             if "retryDelay" in item:
                 return float(str(item["retryDelay"]).rstrip("s"))
-    except Exception:
+    except Exception: 
         pass
     return None
 

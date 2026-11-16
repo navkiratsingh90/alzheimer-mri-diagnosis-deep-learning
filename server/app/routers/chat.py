@@ -36,7 +36,7 @@ else:
 # down and replace a hardcoded model string every time Google retires one
 # (this codebase has already been broken by gemini-1.5-flash, gemini-2.5-flash,
 # and a dated gemini-3.5-flash pin in the last few weeks alone).
-GEMINI_MODEL = "gemini-flash-latest"
+GEMINI_MODEL = "gemini-3.6-flash"
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 
